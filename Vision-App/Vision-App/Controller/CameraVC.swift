@@ -23,7 +23,9 @@ class CameraVC: UIViewController {
     var previewLayer: AVCaptureVideoPreviewLayer! // background view to show the camear
     var photoData: Data?
     var flashControl : flashState = .off
+    var speechSinthetizer = AVSpeechSynthesizer()
 
+    @IBOutlet weak var spinner: UIActivityIndicatorView!
     @IBOutlet weak var captuteImageView: RoundedShadowImageView!
     @IBOutlet weak var flashButton: RoundedShadowButton!
     @IBOutlet weak var indentificationLbl: UILabel!
@@ -41,6 +43,8 @@ class CameraVC: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         previewLayer.frame = cameraView.bounds // to fit the framw the way we want it
+        speechSinthetizer.delegate = self
+        self.spinner.isHidden = true
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -81,11 +85,19 @@ class CameraVC: UIViewController {
     }
     
     @objc func didTapCameraView(){
+        self.cameraView.isUserInteractionEnabled = false
+        self.spinner.isHidden = false
+        self.spinner.startAnimating()
+        
         let settings = AVCapturePhotoSettings()
         
         settings.previewPhotoFormat = settings.embeddedThumbnailPhotoFormat
         
-        
+        if flashControl == .off {
+            settings.flashMode = .off
+        }else{
+            settings.flashMode = .on
+        }
         
         cameraOutput.capturePhoto(with: settings, delegate: self)
     }
@@ -94,15 +106,36 @@ class CameraVC: UIViewController {
         guard let results = request.results as? [VNClassificationObservation] else {return}
         for classification in results {
             if classification.confidence < 0.5 {
-                self.indentificationLbl.text = "I am not sure what this is. Please try Again!"
+                let unknownObjectMessage = "I am not sure what this is. Please try Again!"
+                self.indentificationLbl.text = unknownObjectMessage
+                sinthesizeSpeech(fromString: unknownObjectMessage)
                 self.confidenceLbl.text = ""
                 break
             }else{
-                self.indentificationLbl.text = classification.identifier
-                self.confidenceLbl.text = "Confidence: \(classification.confidence * 100)%"
+                let identification = classification.identifier
+                let confidence = classification.confidence * 100
+                self.indentificationLbl.text = identification
+                self.confidenceLbl.text = "Confidence: \(confidence)%"
+                let completeSentence = "This looks like \(identification) and I am \(confidence) percent sure"
+                sinthesizeSpeech(fromString: completeSentence)
                 break
             }
         }
+    }
+    @IBAction func flashButtonWasPressed(_ sender: Any) {
+        switch flashControl {
+            case .on:
+                flashButton.setTitle("Flash Off", for: .normal)
+                flashControl = .off
+            case .off:
+                flashButton.setTitle("Flash On", for: .normal)
+                flashControl = .on
+            }
+    }
+    
+    func sinthesizeSpeech(fromString string: String){
+        let speechUtterence = AVSpeechUtterance(string: string)
+        speechSinthetizer.speak(speechUtterence)
     }
 }
 
@@ -125,6 +158,14 @@ extension CameraVC: AVCapturePhotoCaptureDelegate {
             let image = UIImage(data: photoData!)
             self.captuteImageView.image = image
         }
+    }
+}
+
+extension CameraVC: AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        self.cameraView.isUserInteractionEnabled = true
+        self.spinner.isHidden = true
+        self.spinner.stopAnimating()
     }
 }
 
